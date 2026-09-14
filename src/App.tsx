@@ -25,12 +25,14 @@ import { QuickSearchModal } from './components/QuickSearchModal';
 import { QuickTicketModal } from './components/QuickTicketModal';
 import { QRCodeModal } from './components/QRCodeModal';
 import { AlertDetailModal } from './components/AlertDetailModal';
+import { DatabaseManagementModal } from './components/DatabaseManagementModal';
 import { Device } from './types';
 
 const MainAppContent: React.FC = () => {
   const { 
     currentUser, currentTab, setCurrentTab, devices, setSelectedDeviceId,
-    selectedAlertForDetail, closeAlertDetail, navigateToAlertTarget, markAlertRead
+    selectedAlertForDetail, closeAlertDetail, navigateToAlertTarget, markAlertRead,
+    isDatabaseModalOpen, setIsDatabaseModalOpen, lastSavedTime, dbSaveStatus
   } = useApp();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -182,6 +184,15 @@ const MainAppContent: React.FC = () => {
         <footer className="h-8 bg-slate-100 border-t border-slate-200 px-4 sm:px-6 flex items-center justify-between text-[10px] text-slate-500 shrink-0 uppercase tracking-widest font-mono select-none">
           <div className="flex items-center space-x-4 sm:space-x-6">
             <span>Hệ thống: <span className="text-green-600 font-bold">Online</span></span>
+            <button 
+              onClick={() => setIsDatabaseModalOpen(true)}
+              className="hover:underline flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>CSDL:</span>
+              <span className={`font-bold ${dbSaveStatus === 'saving' ? 'text-amber-600 animate-pulse' : 'text-emerald-600'}`}>
+                {dbSaveStatus === 'saving' ? 'Đang lưu...' : `Tự động lưu (${lastSavedTime})`}
+              </span>
+            </button>
             <span className="hidden sm:inline">Server: <span className="font-bold text-slate-700">Danang Node-1</span></span>
             <span>Phiên bản: <span className="font-bold text-slate-800">v2.4.0 (2026.09)</span></span>
           </div>
@@ -215,6 +226,11 @@ const MainAppContent: React.FC = () => {
         onClose={closeAlertDetail}
         onNavigateToWork={navigateToAlertTarget}
         onMarkRead={markAlertRead}
+      />
+
+      <DatabaseManagementModal
+        isOpen={isDatabaseModalOpen}
+        onClose={() => setIsDatabaseModalOpen(false)}
       />
     </div>
   );

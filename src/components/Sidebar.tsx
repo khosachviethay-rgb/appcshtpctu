@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   LayoutDashboard, Building2, Zap, Droplets, Wind, Flame,
   Hammer, Wrench, FileText, CheckSquare, Package, DollarSign, 
-  BarChart3, ShieldCheck, X, LogOut, Users, KeyRound, Shield
+  BarChart3, ShieldCheck, X, LogOut, Users, KeyRound, Shield, Database
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { canAccessModule } from '../utils/authSecurity';
@@ -24,7 +24,10 @@ interface NavGroup {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
-  const { currentTab, setCurrentTab, repairRequests, dailyTasks, currentUser, logout, proposals } = useApp();
+  const { 
+    currentTab, setCurrentTab, repairRequests, dailyTasks, currentUser, logout, proposals,
+    setIsDatabaseModalOpen, lastSavedTime, dbSaveStatus
+  } = useApp();
 
   if (!currentUser) return null;
 
@@ -188,6 +191,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
             </div>
           ))}
         </nav>
+
+        {/* Database Status & Center Bar */}
+        <div className="px-3 py-2 border-t border-slate-800/80 bg-slate-900/60 flex items-center justify-between text-[11px] shrink-0">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${dbSaveStatus === 'saving' ? 'bg-amber-400 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
+            <span className="text-[11px] font-mono text-slate-300">CSDL: {lastSavedTime}</span>
+          </div>
+          <button
+            onClick={() => setIsDatabaseModalOpen(true)}
+            className="flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 font-semibold px-2 py-0.5 rounded hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Mở Trung tâm Quản trị & Đồng bộ Cơ sở dữ liệu"
+          >
+            <Database className="w-3 h-3 text-blue-400" />
+            <span>Quản trị CSDL</span>
+          </button>
+        </div>
 
         {/* User Card with Role Badge and Logout */}
         <div className="p-3 border-t border-slate-800 bg-slate-950 shrink-0">

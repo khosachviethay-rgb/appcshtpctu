@@ -23,6 +23,9 @@ import {
   normalizeUsername, isSuperAdmin, hasPermission as checkHasPermission 
 } from '../utils/authSecurity';
 import { normalizeAlertModule } from '../utils/alertUtils';
+import { 
+  safeStorageSet, calculatePctuStorageSize, broadcastDbUpdate, DB_CHANNEL_NAME 
+} from '../utils/dbSyncManager';
 
 const STORAGE_KEY = 'PCTU_FACILITY_DATA_V2';
 
@@ -165,6 +168,18 @@ interface AppContextType {
   exportDataJSON: () => void;
   importDataJSON: (jsonString: string) => boolean;
 
+  // Continuous Database Management & Sync
+  isDatabaseModalOpen: boolean;
+  setIsDatabaseModalOpen: (open: boolean) => void;
+  dbSaveStatus: 'synced' | 'saving' | 'error';
+  lastSavedTime: string;
+  dbStats: {
+    totalRecords: number;
+    storageSizeKb: number;
+    tablesCount: number;
+  };
+  forceSyncAll: () => void;
+
   // Compatibility aliases
   budgetItems: BudgetItem[];
   techTasks: DailyTask[];
@@ -278,6 +293,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const isSuperAdminUser = isSuperAdmin(currentUser);
 
+  // Continuous Database Management & Sync State
+  const [isDatabaseModalOpen, setIsDatabaseModalOpen] = useState<boolean>(false);
+  const [dbSaveStatus, setDbSaveStatus] = useState<'synced' | 'saving' | 'error'>('synced');
+  const [lastSavedTime, setLastSavedTime] = useState<string>(() => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  });
+  const [storageSizeKb, setStorageSizeKb] = useState<number>(() => {
+    return calculatePctuStorageSize(STORAGE_KEY).kb;
+  });
+
+  const recordDbCommit = (tableName: string, count?: number) => {
+    const d = new Date();
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+    setLastSavedTime(timeStr);
+    setDbSaveStatus('synced');
+    setStorageSizeKb(calculatePctuStorageSize(STORAGE_KEY).kb);
+    broadcastDbUpdate(tableName, count || 0);
+  };
+
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [selectedBuildingId, setSelectedBuildingId] = useState<string | null>(null);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
@@ -371,97 +406,176 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     safeLoadArray(`${STORAGE_KEY}_proposals`, INITIAL_MASTER_DATA_PROPOSALS)
   );
 
-  // Sync to LocalStorage
+  // Multi-Tab & Cross-Window Real-Time Database Synchronization
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_users`, JSON.stringify(users));
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (!e.key || !e.key.startsWith(STORAGE_KEY) || !e.newValue) return;
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (e.key === `${STORAGE_KEY}_buildings` && Array.isArray(parsed)) setBuildings(parsed);
+        if (e.key === `${STORAGE_KEY}_devices` && Array.isArray(parsed)) setDevices(parsed);
+        if (e.key === `${STORAGE_KEY}_electric` && Array.isArray(parsed)) setElectricRecords(parsed);
+        if (e.key === `${STORAGE_KEY}_water` && Array.isArray(parsed)) setWaterRecords(parsed);
+        if (e.key === `${STORAGE_KEY}_water_infra`) setWaterInfrastructure(parsed);
+        if (e.key === `${STORAGE_KEY}_infra_issues` && Array.isArray(parsed)) setInfraIssues(parsed);
+        if (e.key === `${STORAGE_KEY}_repair_requests` && Array.isArray(parsed)) setRepairRequests(parsed);
+        if (e.key === `${STORAGE_KEY}_daily_tasks` && Array.isArray(parsed)) setDailyTasks(parsed);
+        if (e.key === `${STORAGE_KEY}_maint_schedules` && Array.isArray(parsed)) setMaintenanceSchedules(parsed);
+        if (e.key === `${STORAGE_KEY}_repair_history` && Array.isArray(parsed)) setRepairHistory(parsed);
+        if (e.key === `${STORAGE_KEY}_maint_history` && Array.isArray(parsed)) setMaintenanceHistory(parsed);
+        if (e.key === `${STORAGE_KEY}_inventory` && Array.isArray(parsed)) setInventory(parsed);
+        if (e.key === `${STORAGE_KEY}_inv_transactions` && Array.isArray(parsed)) setInventoryTransactions(parsed);
+        if (e.key === `${STORAGE_KEY}_budget` && Array.isArray(parsed)) setBudget(parsed);
+        if (e.key === `${STORAGE_KEY}_daily_reports` && Array.isArray(parsed)) setDailyReports(parsed);
+        if (e.key === `${STORAGE_KEY}_alerts` && Array.isArray(parsed)) setAlerts(parsed);
+        if (e.key === `${STORAGE_KEY}_audit_logs` && Array.isArray(parsed)) setAuditLogs(parsed);
+        if (e.key === `${STORAGE_KEY}_rbac_audit_logs` && Array.isArray(parsed)) setRbacAuditLogs(parsed);
+        if (e.key === `${STORAGE_KEY}_md_logs` && Array.isArray(parsed)) setMasterDataLogs(parsed);
+        if (e.key === `${STORAGE_KEY}_proposals` && Array.isArray(parsed)) setProposals(parsed);
+        if (e.key === `${STORAGE_KEY}_users` && Array.isArray(parsed)) setUsers(parsed);
+        if (e.key === `${STORAGE_KEY}_roles` && Array.isArray(parsed)) setRoles(parsed);
+
+        const d = new Date();
+        setLastSavedTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`);
+        setDbSaveStatus('synced');
+        setStorageSizeKb(calculatePctuStorageSize(STORAGE_KEY).kb);
+      } catch (err) {
+        console.warn('Lỗi khi đồng bộ sự kiện storage từ tab khác:', err);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      try {
+        channel = new BroadcastChannel(DB_CHANNEL_NAME);
+        channel.onmessage = () => {
+          const d = new Date();
+          setLastSavedTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`);
+          setStorageSizeKb(calculatePctuStorageSize(STORAGE_KEY).kb);
+        };
+      } catch {}
+    }
+
+    return () => {
+      window.removeEventListener('storage', handleStorageEvent);
+      if (channel) channel.close();
+    };
+  }, []);
+
+  // Continuous Auto-Persistence to Database (LocalStorage with quota guard)
+  useEffect(() => {
+    safeStorageSet(`${STORAGE_KEY}_users`, users);
+    recordDbCommit('users', users.length);
   }, [users]);
 
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem(`${STORAGE_KEY}_current_user`, JSON.stringify(currentUser));
+      safeStorageSet(`${STORAGE_KEY}_current_user`, currentUser);
     } else {
       localStorage.removeItem(`${STORAGE_KEY}_current_user`);
     }
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_md_logs`, JSON.stringify(masterDataLogs));
+    safeStorageSet(`${STORAGE_KEY}_md_logs`, masterDataLogs);
+    recordDbCommit('masterDataLogs', masterDataLogs.length);
   }, [masterDataLogs]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_proposals`, JSON.stringify(proposals));
+    safeStorageSet(`${STORAGE_KEY}_proposals`, proposals);
+    recordDbCommit('proposals', proposals.length);
   }, [proposals]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_buildings`, JSON.stringify(buildings));
+    safeStorageSet(`${STORAGE_KEY}_buildings`, buildings);
+    recordDbCommit('buildings', buildings.length);
   }, [buildings]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_devices`, JSON.stringify(devices));
+    safeStorageSet(`${STORAGE_KEY}_devices`, devices);
+    recordDbCommit('devices', devices.length);
   }, [devices]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_electric`, JSON.stringify(electricRecords));
+    safeStorageSet(`${STORAGE_KEY}_electric`, electricRecords);
+    recordDbCommit('electricRecords', electricRecords.length);
   }, [electricRecords]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_water`, JSON.stringify(waterRecords));
+    safeStorageSet(`${STORAGE_KEY}_water`, waterRecords);
+    recordDbCommit('waterRecords', waterRecords.length);
   }, [waterRecords]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_water_infra`, JSON.stringify(waterInfrastructure));
+    safeStorageSet(`${STORAGE_KEY}_water_infra`, waterInfrastructure);
+    recordDbCommit('waterInfrastructure', 1);
   }, [waterInfrastructure]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_infra_issues`, JSON.stringify(infraIssues));
+    safeStorageSet(`${STORAGE_KEY}_infra_issues`, infraIssues);
+    recordDbCommit('infraIssues', infraIssues.length);
   }, [infraIssues]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_repair_requests`, JSON.stringify(repairRequests));
+    safeStorageSet(`${STORAGE_KEY}_repair_requests`, repairRequests);
+    recordDbCommit('repairRequests', repairRequests.length);
   }, [repairRequests]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_daily_tasks`, JSON.stringify(dailyTasks));
+    safeStorageSet(`${STORAGE_KEY}_daily_tasks`, dailyTasks);
+    recordDbCommit('dailyTasks', dailyTasks.length);
   }, [dailyTasks]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_maint_schedules`, JSON.stringify(maintenanceSchedules));
+    safeStorageSet(`${STORAGE_KEY}_maint_schedules`, maintenanceSchedules);
+    recordDbCommit('maintenanceSchedules', maintenanceSchedules.length);
   }, [maintenanceSchedules]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_repair_history`, JSON.stringify(repairHistory));
+    safeStorageSet(`${STORAGE_KEY}_repair_history`, repairHistory);
+    recordDbCommit('repairHistory', repairHistory.length);
   }, [repairHistory]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_maint_history`, JSON.stringify(maintenanceHistory));
+    safeStorageSet(`${STORAGE_KEY}_maint_history`, maintenanceHistory);
+    recordDbCommit('maintenanceHistory', maintenanceHistory.length);
   }, [maintenanceHistory]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_inventory`, JSON.stringify(inventory));
+    safeStorageSet(`${STORAGE_KEY}_inventory`, inventory);
+    recordDbCommit('inventory', inventory.length);
   }, [inventory]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_inv_transactions`, JSON.stringify(inventoryTransactions));
+    safeStorageSet(`${STORAGE_KEY}_inv_transactions`, inventoryTransactions);
+    recordDbCommit('inventoryTransactions', inventoryTransactions.length);
   }, [inventoryTransactions]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_budget`, JSON.stringify(budget));
+    safeStorageSet(`${STORAGE_KEY}_budget`, budget);
+    recordDbCommit('budget', budget.length);
   }, [budget]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_daily_reports`, JSON.stringify(dailyReports));
+    safeStorageSet(`${STORAGE_KEY}_daily_reports`, dailyReports);
+    recordDbCommit('dailyReports', dailyReports.length);
   }, [dailyReports]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_alerts`, JSON.stringify(alerts));
+    safeStorageSet(`${STORAGE_KEY}_alerts`, alerts);
+    recordDbCommit('alerts', alerts.length);
   }, [alerts]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_audit_logs`, JSON.stringify(auditLogs));
+    safeStorageSet(`${STORAGE_KEY}_audit_logs`, auditLogs);
+    recordDbCommit('auditLogs', auditLogs.length);
   }, [auditLogs]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY}_rbac_audit_logs`, JSON.stringify(rbacAuditLogs));
+    safeStorageSet(`${STORAGE_KEY}_rbac_audit_logs`, rbacAuditLogs);
+    recordDbCommit('rbacAuditLogs', rbacAuditLogs.length);
   }, [rbacAuditLogs]);
 
   // Dedicated RBAC Audit Logger (Ghi lại lịch sử phân quyền, đổi role, reset mật khẩu chi tiết)
@@ -1717,6 +1831,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const payload = {
       exportDate: new Date().toISOString(),
       institution: 'Trường Đại học Phan Châu Trinh',
+      version: '2.0.0',
       buildings,
       devices,
       electricRecords,
@@ -1734,6 +1849,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       dailyReports,
       alerts,
       auditLogs,
+      rbacAuditLogs,
+      masterDataLogs,
+      proposals,
+      users,
+      roles,
     };
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload, null, 2));
     const downloadAnchor = document.createElement('a');
@@ -1747,28 +1867,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const importDataJSON = (jsonString: string): boolean => {
     try {
       const data = JSON.parse(jsonString);
-      if (data.buildings) setBuildings(data.buildings);
-      if (data.devices) setDevices(data.devices);
-      if (data.electricRecords) setElectricRecords(data.electricRecords);
-      if (data.waterRecords) setWaterRecords(data.waterRecords);
+      if (data.buildings && Array.isArray(data.buildings)) setBuildings(data.buildings);
+      if (data.devices && Array.isArray(data.devices)) setDevices(data.devices);
+      if (data.electricRecords && Array.isArray(data.electricRecords)) setElectricRecords(data.electricRecords);
+      if (data.waterRecords && Array.isArray(data.waterRecords)) setWaterRecords(data.waterRecords);
       if (data.waterInfrastructure) setWaterInfrastructure(data.waterInfrastructure);
-      if (data.infraIssues) setInfraIssues(data.infraIssues);
-      if (data.repairRequests) setRepairRequests(data.repairRequests);
-      if (data.dailyTasks) setDailyTasks(data.dailyTasks);
-      if (data.maintenanceSchedules) setMaintenanceSchedules(data.maintenanceSchedules);
-      if (data.repairHistory) setRepairHistory(data.repairHistory);
-      if (data.maintenanceHistory) setMaintenanceHistory(data.maintenanceHistory);
-      if (data.inventory) setInventory(data.inventory);
-      if (data.inventoryTransactions) setInventoryTransactions(data.inventoryTransactions);
-      if (data.budget) setBudget(data.budget);
-      if (data.dailyReports) setDailyReports(data.dailyReports);
-      if (data.alerts) setAlerts(data.alerts);
-      if (data.auditLogs) setAuditLogs(data.auditLogs);
+      if (data.infraIssues && Array.isArray(data.infraIssues)) setInfraIssues(data.infraIssues);
+      if (data.repairRequests && Array.isArray(data.repairRequests)) setRepairRequests(data.repairRequests);
+      if (data.dailyTasks && Array.isArray(data.dailyTasks)) setDailyTasks(data.dailyTasks);
+      if (data.maintenanceSchedules && Array.isArray(data.maintenanceSchedules)) setMaintenanceSchedules(data.maintenanceSchedules);
+      if (data.repairHistory && Array.isArray(data.repairHistory)) setRepairHistory(data.repairHistory);
+      if (data.maintenanceHistory && Array.isArray(data.maintenanceHistory)) setMaintenanceHistory(data.maintenanceHistory);
+      if (data.inventory && Array.isArray(data.inventory)) setInventory(data.inventory);
+      if (data.inventoryTransactions && Array.isArray(data.inventoryTransactions)) setInventoryTransactions(data.inventoryTransactions);
+      if (data.budget && Array.isArray(data.budget)) setBudget(data.budget);
+      if (data.dailyReports && Array.isArray(data.dailyReports)) setDailyReports(data.dailyReports);
+      if (data.alerts && Array.isArray(data.alerts)) setAlerts(data.alerts);
+      if (data.auditLogs && Array.isArray(data.auditLogs)) setAuditLogs(data.auditLogs);
+      if (data.rbacAuditLogs && Array.isArray(data.rbacAuditLogs)) setRbacAuditLogs(data.rbacAuditLogs);
+      if (data.masterDataLogs && Array.isArray(data.masterDataLogs)) setMasterDataLogs(data.masterDataLogs);
+      if (data.proposals && Array.isArray(data.proposals)) setProposals(data.proposals);
+      if (data.users && Array.isArray(data.users)) setUsers(data.users);
+      if (data.roles && Array.isArray(data.roles)) setRoles(data.roles);
+
+      addAuditLog('CẬP NHẬT', 'Cơ sở dữ liệu', 'Backup_Import', 'Phục hồi toàn bộ cơ sở dữ liệu từ tệp sao lưu JSON');
+      recordDbCommit('ALL_TABLES', 22);
       return true;
     } catch (e) {
       console.error('Import failed', e);
       return false;
     }
+  };
+
+  const forceSyncAll = () => {
+    setDbSaveStatus('saving');
+    safeStorageSet(`${STORAGE_KEY}_buildings`, buildings);
+    safeStorageSet(`${STORAGE_KEY}_devices`, devices);
+    safeStorageSet(`${STORAGE_KEY}_electric`, electricRecords);
+    safeStorageSet(`${STORAGE_KEY}_water`, waterRecords);
+    safeStorageSet(`${STORAGE_KEY}_water_infra`, waterInfrastructure);
+    safeStorageSet(`${STORAGE_KEY}_infra_issues`, infraIssues);
+    safeStorageSet(`${STORAGE_KEY}_repair_requests`, repairRequests);
+    safeStorageSet(`${STORAGE_KEY}_daily_tasks`, dailyTasks);
+    safeStorageSet(`${STORAGE_KEY}_maint_schedules`, maintenanceSchedules);
+    safeStorageSet(`${STORAGE_KEY}_repair_history`, repairHistory);
+    safeStorageSet(`${STORAGE_KEY}_maint_history`, maintenanceHistory);
+    safeStorageSet(`${STORAGE_KEY}_inventory`, inventory);
+    safeStorageSet(`${STORAGE_KEY}_inv_transactions`, inventoryTransactions);
+    safeStorageSet(`${STORAGE_KEY}_budget`, budget);
+    safeStorageSet(`${STORAGE_KEY}_daily_reports`, dailyReports);
+    safeStorageSet(`${STORAGE_KEY}_alerts`, alerts);
+    safeStorageSet(`${STORAGE_KEY}_audit_logs`, auditLogs);
+    safeStorageSet(`${STORAGE_KEY}_rbac_audit_logs`, rbacAuditLogs);
+    safeStorageSet(`${STORAGE_KEY}_md_logs`, masterDataLogs);
+    safeStorageSet(`${STORAGE_KEY}_proposals`, proposals);
+    safeStorageSet(`${STORAGE_KEY}_users`, users);
+    safeStorageSet(`${STORAGE_KEY}_roles`, roles);
+
+    recordDbCommit('ALL_TABLES', 22);
   };
 
   return (
@@ -1897,6 +2053,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetToDefaultData,
         exportDataJSON,
         importDataJSON,
+
+        // Database management & continuous sync
+        isDatabaseModalOpen,
+        setIsDatabaseModalOpen,
+        dbSaveStatus,
+        lastSavedTime,
+        dbStats: {
+          totalRecords: (buildings.length + devices.length + electricRecords.length + waterRecords.length + 1 +
+            infraIssues.length + repairRequests.length + dailyTasks.length + maintenanceSchedules.length +
+            repairHistory.length + maintenanceHistory.length + inventory.length + inventoryTransactions.length +
+            budget.length + dailyReports.length + alerts.length + auditLogs.length + rbacAuditLogs.length +
+            masterDataLogs.length + proposals.length + users.length + roles.length),
+          storageSizeKb,
+          tablesCount: 22,
+        },
+        forceSyncAll,
 
         // Aliases for compatibility
         budgetItems: budget,
