@@ -1,0 +1,6 @@
+{
+  "name": "Quản lý Cơ sở Hạ tầng - Đại học Phan Châu Trinh",
+  "description": "Hệ thống số hóa toàn diện quản lý cơ sở vật chất, hạ tầng kỹ thuật, điện nước, điều hòa, PCCC, công việc và báo cáo hành chính nhân sự Trường Đại học Phan Châu Trinh.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

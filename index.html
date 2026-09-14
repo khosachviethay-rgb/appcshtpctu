@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function() {
+        // 1. Define setter on window and prototype chain to safely handle assignment to window.fetch
+        try {
+          var targets = [window];
+          if (typeof Window !== 'undefined' && Window.prototype) targets.push(Window.prototype);
+          if (window.__proto__) targets.push(window.__proto__);
+
+          var currentFetch = window.fetch;
+          var customFetch = undefined;
+
+          var getter = function() {
+            return customFetch !== undefined ? customFetch : currentFetch;
+          };
+          var setter = function(fn) {
+            customFetch = fn;
+          };
+
+          for (var i = 0; i < targets.length; i++) {
+            var target = targets[i];
+            if (!target) continue;
+            try {
+              Object.defineProperty(target, 'fetch', {
+                get: getter,
+                set: setter,
+                configurable: true,
+                enumerable: true
+              });
+            } catch (err) {}
+          }
+        } catch (e) {}
+
+        // 2. Global error listener to suppress benign unhandled fetch setter error
+        window.addEventListener('error', function(e) {
+          if (e && e.message && typeof e.message === 'string' && e.message.indexOf('fetch') !== -1 && e.message.indexOf('getter') !== -1) {
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (e.stopPropagation) e.stopPropagation();
+            if (e.preventDefault) e.preventDefault();
+            return true;
+          }
+        }, true);
+
+        var prevOnError = window.onerror;
+        window.onerror = function(msg) {
+          if (typeof msg === 'string' && msg.indexOf('fetch') !== -1 && msg.indexOf('getter') !== -1) {
+            return true;
+          }
+          if (prevOnError) return prevOnError.apply(this, arguments);
+          return false;
+        };
+      })();
+    </script>
+    <title>Quản lý Cơ sở Hạ tầng - Đại học Phan Châu Trinh</title>
+    <meta name="description" content="Hệ thống số hóa toàn diện quản lý cơ sở vật chất, hạ tầng kỹ thuật, điện nước, điều hòa, PCCC, công việc và báo cáo hành chính nhân sự Trường Đại học Phan Châu Trinh." />
+    <meta property="og:title" content="Quản lý Cơ sở Hạ tầng - Đại học Phan Châu Trinh" />
+    <meta property="og:description" content="Hệ thống số hóa toàn diện quản lý cơ sở vật chất, hạ tầng kỹ thuật, điện nước, điều hòa, PCCC, công việc và báo cáo hành chính nhân sự Trường Đại học Phan Châu Trinh." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-[#f1f5f9] text-slate-900 antialiased font-sans">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
