@@ -19,9 +19,36 @@ export interface DatabaseStats {
   tablesCount: number;
   lastSavedTime: string;
   isAutoSyncEnabled: boolean;
+  autoSyncIntervalSec: number;
+  lastSyncResult?: string;
 }
 
 export const DB_CHANNEL_NAME = 'pctu_database_sync_channel';
+
+export const ALL_DB_TABLES = [
+  { keySuffix: '_buildings', name: 'Tòa nhà & Khu giảng đường', category: 'Hạ tầng' },
+  { keySuffix: '_devices', name: 'Thiết bị kỹ thuật & Mã QR', category: 'Thiết bị' },
+  { keySuffix: '_electric', name: 'Chỉ số Điện & Trạm biến áp', category: 'Năng lượng' },
+  { keySuffix: '_water', name: 'Chỉ số Nước & Hệ thống bơm', category: 'Năng lượng' },
+  { keySuffix: '_water_infra', name: 'Cấu hình Bể nước & Bơm cấp', category: 'Hạ tầng' },
+  { keySuffix: '_infra_issues', name: 'Sự cố hạ tầng & Công trình', category: 'Hạ tầng' },
+  { keySuffix: '_repair_requests', name: 'Phiếu Yêu cầu sửa chữa', category: 'Vận hành' },
+  { keySuffix: '_daily_tasks', name: 'Nhiệm vụ & Checklist kỹ thuật', category: 'Vận hành' },
+  { keySuffix: '_maint_schedules', name: 'Kế hoạch bảo trì định kỳ', category: 'Bảo trì' },
+  { keySuffix: '_repair_history', name: 'Lịch sử nghiệm thu sửa chữa', category: 'Bảo trì' },
+  { keySuffix: '_maint_history', name: 'Lịch sử bảo dưỡng thiết bị', category: 'Bảo trì' },
+  { keySuffix: '_inventory', name: 'Danh mục Vật tư trong kho', category: 'Vật tư' },
+  { keySuffix: '_inv_transactions', name: 'Nhật ký Nhập/Xuất kho vật tư', category: 'Vật tư' },
+  { keySuffix: '_budget', name: 'Dự toán Ngân sách vận hành', category: 'Tài chính' },
+  { keySuffix: '_daily_reports', name: 'Báo cáo ca kỹ thuật viên', category: 'Báo cáo' },
+  { keySuffix: '_alerts', name: 'Cảnh báo hệ thống & Sự cố', category: 'Giám sát' },
+  { keySuffix: '_audit_logs', name: 'Nhật ký kiểm toán hoạt động', category: 'Hệ thống' },
+  { keySuffix: '_rbac_audit_logs', name: 'Nhật ký phân quyền & Tài khoản', category: 'Hệ thống' },
+  { keySuffix: '_md_logs', name: 'Nhật ký thay đổi Master Data', category: 'Dữ liệu gốc' },
+  { keySuffix: '_proposals', name: 'Đề xuất phê duyệt Master Data', category: 'Dữ liệu gốc' },
+  { keySuffix: '_users', name: 'Tài khoản người dùng & CBKT', category: 'Phân quyền' },
+  { keySuffix: '_roles', name: 'Cấu hình Quyền hạn RBAC Matrix', category: 'Phân quyền' },
+];
 
 // Safe localStorage saver with quota check & error handling
 export const safeStorageSet = (key: string, value: any): boolean => {
@@ -32,6 +59,19 @@ export const safeStorageSet = (key: string, value: any): boolean => {
   } catch (error) {
     console.error(`Lỗi khi lưu dữ liệu vào khóa [${key}]:`, error);
     return false;
+  }
+};
+
+// Safe localStorage loader with fallback
+export const safeStorageGet = <T>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed !== undefined && parsed !== null ? parsed : fallback;
+  } catch (err) {
+    console.warn(`Lỗi khi đọc dữ liệu từ [${key}], trả về giá trị mặc định:`, err);
+    return fallback;
   }
 };
 

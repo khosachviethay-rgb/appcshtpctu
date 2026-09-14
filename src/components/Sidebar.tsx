@@ -196,7 +196,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
         <div className="px-3 py-2 border-t border-slate-800/80 bg-slate-900/60 flex items-center justify-between text-[11px] shrink-0">
           <div className="flex items-center gap-1.5 text-slate-400">
             <span className={`w-2 h-2 rounded-full shrink-0 ${dbSaveStatus === 'saving' ? 'bg-amber-400 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
-            <span className="text-[11px] font-mono text-slate-300">CSDL: {lastSavedTime}</span>
+            <span className="text-[11px] font-mono text-slate-300">Tự động: {lastSavedTime}</span>
           </div>
           <button
             onClick={() => setIsDatabaseModalOpen(true)}

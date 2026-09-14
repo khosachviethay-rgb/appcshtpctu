@@ -168,21 +168,21 @@ export const Header: React.FC<HeaderProps> = ({
           </kbd>
         </button>
 
-        {/* Real-time Database Sync Status & Center Button */}
+        {/* Real-time Database Auto-Sync Status & Center Button */}
         <button
           onClick={() => setIsDatabaseModalOpen(true)}
-          className={`flex items-center gap-1.5 px-2 py-1 text-xs rounded border transition-colors shadow-2xs ${
+          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded border transition-colors shadow-2xs ${
             dbSaveStatus === 'saving'
               ? 'bg-amber-50 text-amber-800 border-amber-300 animate-pulse'
               : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'
           }`}
-          title={`Cơ sở dữ liệu: Tự động lưu 100% thay đổi (Lần lưu gần nhất: ${lastSavedTime}). Bấm để quản trị & sao lưu CSDL.`}
+          title={`Cơ sở dữ liệu: Hoàn toàn tự động đồng bộ 100% toàn hệ thống (Lần đồng bộ gần nhất: ${lastSavedTime}). Nhấp để xem chi tiết & quản trị CSDL.`}
         >
           <Database className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-          <span className="hidden sm:inline text-[11px] font-semibold">
-            {dbSaveStatus === 'saving' ? 'Đang lưu...' : 'CSDL: Đã lưu'}
+          <span className="hidden sm:inline text-[11px] font-bold">
+            {dbSaveStatus === 'saving' ? 'Đang đồng bộ...' : 'CSDL: Tự động 100%'}
           </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
         </button>
 
         {/* New Ticket Quick Button */}

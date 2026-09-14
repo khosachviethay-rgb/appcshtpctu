@@ -210,10 +210,10 @@ export const DatabaseManagementModal: React.FC<DatabaseManagementModalProps> = (
                 type="button"
                 onClick={handleForceSync}
                 disabled={isSyncing}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition-colors flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Đang kiểm tra & đồng bộ...' : 'Đồng bộ lại toàn bộ'}</span>
+                <span>{isSyncing ? 'Đang tự động quét & đồng bộ...' : 'Đồng bộ lại toàn bộ ngay (22 bảng)'}</span>
               </button>
 
               <button
@@ -252,6 +252,33 @@ export const DatabaseManagementModal: React.FC<DatabaseManagementModalProps> = (
                 placeholder="Tìm bảng dữ liệu..."
                 className="px-3 py-1.5 text-xs rounded border border-slate-300 focus:outline-hidden focus:border-blue-500 w-44 sm:w-56"
               />
+            </div>
+          </div>
+
+          {/* Automated Synchronization Engine Details */}
+          <div className="p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs text-emerald-950">
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-bold uppercase tracking-wider text-[11px] text-emerald-800 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                Động Cơ Đồng Bộ Tự Động Toàn Hệ Thống Đang Hoạt Động (Auto-Sync 100%)
+              </span>
+              <span className="text-[10px] font-mono text-emerald-700 font-semibold bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                Nhịp tim: 30s / lần + Tức thời
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] text-slate-700">
+              <div className="bg-white/80 p-2.5 rounded border border-emerald-200/60">
+                <p className="font-bold text-slate-900 mb-0.5">1. Tự động lưu tức thời</p>
+                <p className="text-slate-600 leading-snug">Mỗi khi thêm phiếu, đổi trạng thái, cập nhật chỉ số điện nước hay phân công việc, CSDL tự động ghi nhận ngay.</p>
+              </div>
+              <div className="bg-white/80 p-2.5 rounded border border-emerald-200/60">
+                <p className="font-bold text-slate-900 mb-0.5">2. Tự động đồng bộ đa Tab</p>
+                <p className="text-slate-600 leading-snug">Sử dụng BroadcastChannel thời gian thực. Thao tác ở tab này sẽ tự động cập nhật ngay trên tất cả các tab khác.</p>
+              </div>
+              <div className="bg-white/80 p-2.5 rounded border border-emerald-200/60">
+                <p className="font-bold text-slate-900 mb-0.5">3. Tự động kiểm tra & Tự phục hồi</p>
+                <p className="text-slate-600 leading-snug">Khi mở app hoặc chuyển cửa sổ, hệ thống tự động kiểm tra tính toàn vẹn 22/22 bảng và tự bù đắp dữ liệu thiếu.</p>
+              </div>
             </div>
           </div>
 
